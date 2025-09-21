@@ -540,13 +540,13 @@ ${cleanExplanation}
 			return -1;
 		}
 
-		const matchesContext = (candidateIndex) => {
-			const beforeSlice = content.substring(Math.max(0, candidateIndex - (textBefore ? textBefore.length : 0)), candidateIndex).trim();
-			const afterSlice = content.substring(candidateIndex + selectedText.length, Math.min(content.length, candidateIndex + selectedText.length + (textAfter ? textAfter.length : 0))).trim();
-			const beforeMatch = !textBefore || beforeSlice.endsWith(textBefore);
-			const afterMatch = !textAfter || afterSlice.startsWith(textAfter);
-			return beforeMatch && afterMatch;
-		};
+                const matchesContext = (candidateIndex) => {
+                        const beforeSlice = content.substring(0, candidateIndex).trimEnd();
+                        const afterSlice = content.substring(candidateIndex + selectedText.length).trimStart();
+                        const beforeMatch = !textBefore || beforeSlice.endsWith(textBefore);
+                        const afterMatch = !textAfter || afterSlice.startsWith(textAfter);
+                        return beforeMatch && afterMatch;
+                };
 
 		let candidateIndex = content.indexOf(selectedText);
 		if (candidateIndex === -1) {
