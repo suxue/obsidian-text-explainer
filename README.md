@@ -22,7 +22,7 @@ Text Explainer is an Obsidian plugin that provides instant, context-aware explan
 - ⚡ **Instant Access** - Configurable hotkey for quick explanations (default: `Alt+D`)
 - 🌍 **Multi-language Support** - Supports 6+ languages with customizable response language
 - 🔌 **Universal API Compatibility** - Works with OpenAI, Claude, local models, and other providers
-- 📝 **Note Integration** - Create linked notes from explanations
+- 📝 **Note Integration** - Create linked notes with configurable properties and templates
 - 🎨 **Seamless UI** - Clean modal interface with proper Obsidian theming
 
 ## Features
@@ -41,6 +41,7 @@ The plugin automatically determines the best explanation type based on your sele
 
 - **Context-Aware Processing** - Uses surrounding text for better accuracy
 - **Note Creation** - Generate linked notes from explanations
+- **Configurable Templates** - Adjust predefined properties and body layout before saving notes
 - **Multiple Triggers** - Hotkey, ribbon icon, or command palette
 - **Technical Term Recognition** - Special handling for technical vocabulary
 - **Person/Organization Detection** - Identifies and explains names and entities
@@ -128,7 +129,8 @@ ollama pull llama2  # or preferred model
 1. **Select any text** in your Obsidian note
 2. **Press `Alt+D`** (or your configured hotkey)
 3. **View explanation** in the modal popup
-4. **Optionally create a note** using the "Create Note & Link" button
+4. **Customize the generated note** by editing predefined properties or the body template (placeholders like `{{content}}` are supported)
+5. **Create a linked note** with the "Create Note & Link" button
 
 ## Configuration
 
@@ -148,6 +150,16 @@ Access via Settings → Text Explainer:
 
 #### Note Settings
 - **Note Directory**: Folder for created explanation notes (default: `Explanations`)
+
+### Note Configuration Modal
+
+Before saving a note you can tailor both the front matter and body directly from the explanation popup:
+
+- **Predefined properties**: Use the table to add YAML-style key/value pairs. Values can be plain text or placeholders that are resolved when the note is created.
+- **Body template editor**: Configure the Markdown that wraps the generated explanation. Include `{{content}}` where the plain-text explanation should appear or `{{contentHtml}}` to keep HTML formatting.
+- **Available placeholders**: `{{selectedText}}`, `{{paragraphText}}`, `{{textBefore}}`, `{{textAfter}}`, `{{date}}`, `{{content}}`, `{{contentHtml}}`.
+
+The plugin remembers your last-used configuration, making it easy to reuse templates across sessions.
 
 ### Supported Languages
 
