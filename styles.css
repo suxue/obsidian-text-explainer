@@ -93,6 +93,46 @@
     text-decoration: underline;
 }
 
+.text-explainer-modal .explanation-audio-container {
+    margin-top: 16px;
+    padding: 12px;
+    border-radius: 8px;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    display: none;
+}
+
+.text-explainer-modal .explanation-audio-container.audio-loading {
+    color: var(--text-muted);
+}
+
+.text-explainer-modal .explanation-audio-container.audio-error {
+    background: var(--background-modifier-error);
+    border-color: var(--text-error);
+    color: var(--text-error);
+}
+
+.text-explainer-modal .explanation-audio-container.audio-ready h4 {
+    margin: 0 0 8px;
+    color: var(--text-normal);
+}
+
+.text-explainer-modal .explanation-audio-container .audio-player {
+    width: 100%;
+}
+
+.text-explainer-modal .explanation-audio-container .audio-download {
+    margin-top: 8px;
+}
+
+.text-explainer-modal .explanation-audio-container .audio-download a {
+    color: var(--link-color);
+}
+
+.text-explainer-modal .explanation-audio-container .audio-download a:hover {
+    text-decoration: underline;
+}
+
 /* Error message */
 .text-explainer-modal .error-message {
     background: var(--background-modifier-error);
