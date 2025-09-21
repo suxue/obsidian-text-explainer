@@ -736,10 +736,80 @@ class ExplanationModal extends Modal {
 		return filename;
 	}
 
+        getNormalizedNoteDirectory() {
+                const configuredDirectory = (typeof this.settings.noteDirectory === 'string')
+                        ? this.settings.noteDirectory.trim()
+                        : '';
+                const fallbackDirectory = configuredDirectory.length > 0 ? configuredDirectory : 'Explanations';
+                const normalized = fallbackDirectory
+                        .replace(/\\/g, '/')
+                        .replace(/\/{2,}/g, '/')
+                        .replace(/\/+$/, '');
+                return normalized.length > 0 ? normalized : fallbackDirectory;
+        }
+
+        findExistingNotePath(noteDirectory, fileName) {
+                if (!noteDirectory || typeof noteDirectory !== 'string') {
+                        return null;
+                }
+
+                const directoryPrefix = `${noteDirectory}/`;
+                const targetLower = fileName.toLowerCase();
+                let numericSuffixMatch = null;
+                let numericSuffixValue = Number.POSITIVE_INFINITY;
+
+                const files = this.app.vault.getFiles();
+                for (const file of files) {
+                        if (!file.path.startsWith(directoryPrefix)) {
+                                continue;
+                        }
+
+                        const relativePath = file.path.substring(directoryPrefix.length);
+                        if (relativePath.includes('/')) {
+                                continue;
+                        }
+
+                        const lowerRelative = relativePath.toLowerCase();
+                        if (!lowerRelative.endsWith('.md')) {
+                                continue;
+                        }
+
+                        const baseName = relativePath.substring(0, relativePath.length - 3);
+                        const baseLower = baseName.toLowerCase();
+
+                        if (baseLower === targetLower) {
+                                return file.path;
+                        }
+
+                        if (!baseLower.startsWith(`${targetLower}-`)) {
+                                continue;
+                        }
+
+                        const suffix = baseLower.substring(targetLower.length + 1);
+                        if (!/^\d+$/.test(suffix)) {
+                                continue;
+                        }
+
+                        const numericSuffix = parseInt(suffix, 10);
+                        if (numericSuffix < numericSuffixValue) {
+                                numericSuffixMatch = file.path;
+                                numericSuffixValue = numericSuffix;
+                        }
+                }
+
+                return numericSuffixMatch;
+        }
+
         async createNoteFromExplanation() {
                 try {
                         const fileName = this.sanitizeFilename(this.selectionData.selectedText);
-                        const noteDirectory = this.settings.noteDirectory || 'Explanations';
+                        const noteDirectory = this.getNormalizedNoteDirectory();
+
+                        // Reuse existing note when available
+                        const existingNotePath = this.findExistingNotePath(noteDirectory, fileName);
+                        if (existingNotePath) {
+                                return { notePath: existingNotePath, createdNew: false };
+                        }
 
                         // Create directory if it doesn't exist
                         const adapter = this.app.vault.adapter;
@@ -775,12 +845,12 @@ class ExplanationModal extends Modal {
 
                         await this.app.vault.create(notePath, noteContent);
 
-                        return notePath;
+                        return { notePath, createdNew: true };
                 } catch (error) {
                         console.error('Error creating note:', error);
                         throw error;
-		}
-	}
+                }
+        }
 
 	getLinkTextFromNotePath(notePath) {
 		const fileName = notePath.split('/').pop().replace('.md', '');
@@ -903,7 +973,7 @@ class ExplanationModal extends Modal {
                         }
 			
                         // Create the note
-                        const notePath = await this.createNoteFromExplanation();
+                        const { notePath, createdNew } = await this.createNoteFromExplanation();
 
                         const normalizedProperties = this.noteProperties
                                 .map((property) => ({
@@ -920,9 +990,17 @@ class ExplanationModal extends Modal {
                                 ? this.replaceSelectionWithLink(notePath)
                                 : await this.insertLinkIntoActiveFile(notePath);
 
-			const message = linkInserted
-				? `Note created and linked: ${notePath}`
-				: `Note created (link not inserted automatically): ${notePath}`;
+                        const message = (() => {
+                                if (createdNew) {
+                                        return linkInserted
+                                                ? `Note created and linked: ${notePath}`
+                                                : `Note created (link not inserted automatically): ${notePath}`;
+                                }
+
+                                return linkInserted
+                                        ? `Existing note linked: ${notePath}`
+                                        : `Existing note found (link not inserted automatically): ${notePath}`;
+                        })();
 			new Notice(message);
 			
                         // Close the modal
