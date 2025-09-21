@@ -7,7 +7,8 @@ const DEFAULT_SETTINGS = {
 	baseUrl: "https://api.openai.com/v1",
 	language: "Chinese",
 	hotkeyModifiers: ["Alt"],
-	hotkeyKey: "d"
+	hotkeyKey: "d",
+	noteDirectory: "Explanations"
 };
 
 // Main plugin class
@@ -20,16 +21,21 @@ class TextExplainerPlugin extends Plugin {
 			this.explainSelectedText();
 		});
 
-		// Add command
+		// Add command (works in edit and reader mode)
 		this.addCommand({
 			id: 'explain-selected-text',
 			name: 'Explain selected text',
-			editorCallback: (editor) => {
-				this.explainSelectedText(editor);
+			checkCallback: (checking) => {
+				const selectionData = this.getSelectedText();
+				if (selectionData && selectionData.selectedText) {
+					if (!checking) this.explainSelectedText(selectionData.editor);
+					return true;
+				}
+				return false;
 			}
 		});
 
-		// Register hotkey
+		// Register hotkey (works in edit and reader mode)
 		this.addCommand({
 			id: 'explain-text-hotkey',
 			name: 'Explain text (hotkey)',
@@ -37,8 +43,13 @@ class TextExplainerPlugin extends Plugin {
 				modifiers: this.settings.hotkeyModifiers,
 				key: this.settings.hotkeyKey
 			}],
-			editorCallback: (editor) => {
-				this.explainSelectedText(editor);
+			checkCallback: (checking) => {
+				const selectionData = this.getSelectedText();
+				if (selectionData && selectionData.selectedText) {
+					if (!checking) this.explainSelectedText(selectionData.editor);
+					return true;
+				}
+				return false;
 			}
 		});
 
@@ -60,36 +71,82 @@ class TextExplainerPlugin extends Plugin {
 		await this.saveData(this.settings);
 	}
 
-	// Get selected text from the active editor
+	// Get selected text from the active editor or DOM selection
 	getSelectedText(editor) {
 		if (!editor) {
 			const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-			if (!activeView) return null;
-			editor = activeView.editor;
+			if (activeView && activeView.editor) {
+				editor = activeView.editor;
+			}
 		}
 
-		const selection = editor.getSelection();
-		if (!selection) return null;
+		// Try to get selection from editor (edit mode)
+		if (editor) {
+			const selection = editor.getSelection();
+			if (selection) {
+				// Get context around selection
+				const cursor = editor.getCursor('from');
+				const line = editor.getLine(cursor.line);
+				const doc = editor.getValue();
+				const selectionStart = editor.posToOffset(editor.getCursor('from'));
+				const selectionEnd = editor.posToOffset(editor.getCursor('to'));
 
-		// Get context around selection
-		const cursor = editor.getCursor('from');
-		const line = editor.getLine(cursor.line);
-		const doc = editor.getValue();
-		const selectionStart = editor.posToOffset(editor.getCursor('from'));
-		const selectionEnd = editor.posToOffset(editor.getCursor('to'));
+				// Get surrounding context
+				const contextRange = 200;
+				const textBefore = doc.substring(Math.max(0, selectionStart - contextRange), selectionStart).trim();
+				const textAfter = doc.substring(selectionEnd, Math.min(doc.length, selectionEnd + contextRange)).trim();
 
-		// Get surrounding context (similar to original script)
-		const contextRange = 200;
-		const textBefore = doc.substring(Math.max(0, selectionStart - contextRange), selectionStart).trim();
-		const textAfter = doc.substring(selectionEnd, Math.min(doc.length, selectionEnd + contextRange)).trim();
+				return {
+					selectedText: selection,
+					textBefore,
+					textAfter,
+					paragraphText: line,
+					editor
+				};
+			}
+		}
 
-		return {
-			selectedText: selection,
-			textBefore,
-			textAfter,
-			paragraphText: line,
-			editor
-		};
+		// Try to get selection from DOM (reader mode)
+		const selection = window.getSelection();
+		if (selection && selection.toString().trim()) {
+			const selectedText = selection.toString().trim();
+			
+			// Get context from surrounding DOM elements
+			const range = selection.getRangeAt(0);
+			const container = range.commonAncestorContainer;
+			
+			// Find the paragraph or container element
+			let parentElement = container.nodeType === Node.TEXT_NODE ? container.parentElement : container;
+			while (parentElement && !['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(parentElement.tagName)) {
+				parentElement = parentElement.parentElement;
+			}
+			
+			const paragraphText = parentElement ? parentElement.textContent.trim() : selectedText;
+			
+			// Get surrounding context by looking at siblings
+			let textBefore = '';
+			let textAfter = '';
+			
+			if (parentElement) {
+				const fullText = parentElement.textContent;
+				const selectedIndex = fullText.indexOf(selectedText);
+				if (selectedIndex !== -1) {
+					const contextRange = 200;
+					textBefore = fullText.substring(Math.max(0, selectedIndex - contextRange), selectedIndex).trim();
+					textAfter = fullText.substring(selectedIndex + selectedText.length, Math.min(fullText.length, selectedIndex + selectedText.length + contextRange)).trim();
+				}
+			}
+
+			return {
+				selectedText,
+				textBefore,
+				textAfter,
+				paragraphText,
+				editor: null // No editor in reader mode
+			};
+		}
+
+		return null;
 	}
 
 	// Main function to explain selected text
@@ -285,11 +342,22 @@ class ExplanationModal extends Modal {
 		const errorDiv = contentEl.createDiv('error-message');
 		errorDiv.style.display = 'none';
 
+		// Action buttons container
+		const actionsDiv = contentEl.createDiv('explanation-actions');
+		actionsDiv.style.display = 'none';
+		
+		// Create Note & Link button
+		const createNoteBtn = actionsDiv.createEl('button', {
+			text: 'Create Note & Link',
+			cls: 'mod-cta'
+		});
+		createNoteBtn.addEventListener('click', () => this.createNoteAndLink());
+
 		// Start explanation process
-		this.generateExplanation(loadingDiv, contentDiv, errorDiv);
+		this.generateExplanation(loadingDiv, contentDiv, errorDiv, actionsDiv);
 	}
 
-	async generateExplanation(loadingDiv, contentDiv, errorDiv) {
+	async generateExplanation(loadingDiv, contentDiv, errorDiv, actionsDiv) {
 		try {
 			const { prompt, systemPrompt } = this.plugin.getPrompt(
 				this.selectionData.selectedText,
@@ -312,7 +380,9 @@ class ExplanationModal extends Modal {
 			// Final update
 			loadingDiv.style.display = 'none';
 			contentDiv.style.display = 'block';
+			actionsDiv.style.display = 'block';
 			this.updateContentDisplay(contentDiv, response);
+			this.explanationResponse = response;
 
 		} catch (error) {
 			console.error('Error generating explanation:', error);
@@ -347,6 +417,227 @@ class ExplanationModal extends Modal {
 		} catch (e) {
 			console.error(`Error parsing content: ${e.message}`);
 			contentDiv.innerHTML = `<p>${text.replace(/\n/g, '<br>')}</p>`;
+		}
+	}
+
+	sanitizeFilename(text) {
+		if (!text || text.trim().length === 0) {
+			return 'Untitled';
+		}
+		
+		// Remove HTML tags
+		let filename = text.replace(/<[^>]*>/g, '');
+		
+		// Replace invalid characters for filenames
+		filename = filename.replace(/[<>:"/\\|?*\x00-\x1f]/g, '');
+		
+		// Replace multiple spaces with single space and trim
+		filename = filename.replace(/\s+/g, ' ').trim();
+		
+		// Limit length to 100 characters
+		if (filename.length > 100) {
+			filename = filename.substring(0, 100).trim();
+		}
+		
+		// If empty after sanitization, use default name
+		if (filename.length === 0) {
+			return 'Untitled';
+		}
+		
+		return filename;
+	}
+
+	async createNoteFromExplanation() {
+		try {
+			const fileName = this.sanitizeFilename(this.selectionData.selectedText);
+			const noteDirectory = this.settings.noteDirectory || 'Explanations';
+			
+			// Create directory if it doesn't exist
+			const adapter = this.app.vault.adapter;
+			if (!(await adapter.exists(noteDirectory))) {
+				await adapter.mkdir(noteDirectory);
+			}
+			
+			// Generate unique filename
+			let notePath = `${noteDirectory}/${fileName}.md`;
+			let counter = 1;
+			
+			while (await this.app.vault.adapter.exists(notePath)) {
+				notePath = `${noteDirectory}/${fileName}-${counter}.md`;
+				counter++;
+			}
+			
+			// Prepare note content
+			const now = new Date().toISOString().split('T')[0];
+			const cleanExplanation = this.explanationResponse.replace(/<[^>]*>/g, '').trim();
+			
+			const noteContent = `# ${this.selectionData.selectedText}
+
+> Explanation generated on ${now}
+
+## Original Context
+${this.selectionData.selectedText}
+
+## Explanation
+${cleanExplanation}
+
+---
+*Generated by Text Explainer Plugin*`;
+
+			// Create the note
+			await this.app.vault.create(notePath, noteContent);
+			
+			return notePath;
+		} catch (error) {
+			console.error('Error creating note:', error);
+			throw error;
+		}
+	}
+
+	getLinkTextFromNotePath(notePath) {
+		const fileName = notePath.split('/').pop().replace('.md', '');
+		return `[[${fileName}]]`;
+	}
+
+	replaceSelectionWithLink(notePath) {
+		const editor = this.selectionData.editor;
+		if (!editor) {
+			console.warn('Editor not available - skipping text replacement');
+			return false;
+		}
+
+		const linkText = this.getLinkTextFromNotePath(notePath);
+		
+		try {
+			const selection = editor.getSelection();
+			if (selection && selection === this.selectionData.selectedText) {
+				editor.replaceSelection(linkText);
+				return true;
+			}
+
+			const cursor = editor.getCursor();
+			const currentLine = editor.getLine(cursor.line);
+			const textIndex = currentLine.indexOf(this.selectionData.selectedText);
+			if (textIndex !== -1) {
+				const lineNumber = cursor.line;
+				const from = { line: lineNumber, ch: textIndex };
+				const to = { line: lineNumber, ch: textIndex + this.selectionData.selectedText.length };
+				editor.replaceRange(linkText, from, to);
+				return true;
+			}
+
+			editor.replaceSelection(linkText);
+			return true;
+		} catch (error) {
+			console.error('Error replacing selection with link:', error);
+			editor.replaceSelection(linkText);
+			return true;
+		}
+	}
+
+	findSelectionIndexInContent(content, selectedText, textBefore, textAfter, paragraphText) {
+		if (!selectedText) {
+			return -1;
+		}
+
+		const matchesContext = (candidateIndex) => {
+			const beforeSlice = content.substring(Math.max(0, candidateIndex - (textBefore ? textBefore.length : 0)), candidateIndex).trim();
+			const afterSlice = content.substring(candidateIndex + selectedText.length, Math.min(content.length, candidateIndex + selectedText.length + (textAfter ? textAfter.length : 0))).trim();
+			const beforeMatch = !textBefore || beforeSlice.endsWith(textBefore);
+			const afterMatch = !textAfter || afterSlice.startsWith(textAfter);
+			return beforeMatch && afterMatch;
+		};
+
+		let candidateIndex = content.indexOf(selectedText);
+		if (candidateIndex === -1) {
+			return -1;
+		}
+
+		let index = candidateIndex;
+		while (index !== -1) {
+			if (matchesContext(index)) {
+				return index;
+			}
+			index = content.indexOf(selectedText, index + 1);
+		}
+
+		if (paragraphText) {
+			const paragraphIndex = content.indexOf(paragraphText);
+			if (paragraphIndex !== -1) {
+				const innerIndex = paragraphText.indexOf(selectedText);
+				if (innerIndex !== -1) {
+					return paragraphIndex + innerIndex;
+				}
+			}
+		}
+
+		return candidateIndex;
+	}
+
+	async insertLinkIntoActiveFile(notePath) {
+		try {
+			const activeFile = this.plugin.app.workspace.getActiveFile();
+			if (!activeFile) {
+				console.warn('Active file not found - skipping link insertion');
+				return false;
+			}
+
+			const content = await this.plugin.app.vault.read(activeFile);
+			const index = this.findSelectionIndexInContent(
+				content,
+				this.selectionData.selectedText,
+				this.selectionData.textBefore,
+				this.selectionData.textAfter,
+				this.selectionData.paragraphText
+			);
+
+			if (index === -1) {
+				console.warn('Selected text not found in active file - skipping link insertion');
+				return false;
+			}
+
+			const linkText = this.getLinkTextFromNotePath(notePath);
+			const updatedContent = `${content.slice(0, index)}${linkText}${content.slice(index + this.selectionData.selectedText.length)}`;
+			await this.plugin.app.vault.modify(activeFile, updatedContent);
+			return true;
+		} catch (error) {
+			console.error('Error inserting link into active file:', error);
+			return false;
+		}
+	}
+
+	async createNoteAndLink() {
+		try {
+			// Show loading state on button
+			const button = this.contentEl.querySelector('button');
+			button.textContent = 'Creating Note...';
+			button.disabled = true;
+			
+			// Create the note
+			const notePath = await this.createNoteFromExplanation();
+			
+			const linkInserted = this.selectionData.editor
+				? this.replaceSelectionWithLink(notePath)
+				: await this.insertLinkIntoActiveFile(notePath);
+
+			const message = linkInserted
+				? `Note created and linked: ${notePath}`
+				: `Note created (link not inserted automatically): ${notePath}`;
+			new Notice(message);
+			
+			// Close the modal
+			this.close();
+			
+		} catch (error) {
+			console.error('Error creating note:', error);
+			new Notice(`Error: ${error.message}`);
+			
+			// Reset button state
+			const button = this.contentEl.querySelector('button');
+			if (button) {
+				button.textContent = 'Create Note & Link';
+				button.disabled = false;
+			}
 		}
 	}
 
@@ -422,6 +713,18 @@ class TextExplainerSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
+		// Note directory setting
+		new Setting(containerEl)
+			.setName('Note Directory')
+			.setDesc('Directory where explanation notes will be created (relative to vault root)')
+			.addText(text => text
+				.setPlaceholder('Explanations')
+				.setValue(this.plugin.settings.noteDirectory)
+				.onChange(async (value) => {
+					this.plugin.settings.noteDirectory = value;
+					await this.plugin.saveSettings();
+				}));
+
 		// Hotkey settings section
 		containerEl.createEl('h3', { text: 'Hotkey Settings' });
 
@@ -451,8 +754,13 @@ class TextExplainerSettingTab extends PluginSettingTab {
 							modifiers: this.plugin.settings.hotkeyModifiers,
 							key: this.plugin.settings.hotkeyKey
 						}],
-						editorCallback: (editor) => {
-							this.plugin.explainSelectedText(editor);
+						checkCallback: (checking) => {
+							const selectionData = this.plugin.getSelectedText();
+							if (selectionData && selectionData.selectedText) {
+								if (!checking) this.plugin.explainSelectedText(selectionData.editor);
+								return true;
+							}
+							return false;
 						}
 					});
 				});
@@ -478,8 +786,13 @@ class TextExplainerSettingTab extends PluginSettingTab {
 								modifiers: this.plugin.settings.hotkeyModifiers,
 								key: this.plugin.settings.hotkeyKey
 							}],
-							editorCallback: (editor) => {
-								this.plugin.explainSelectedText(editor);
+							checkCallback: (checking) => {
+								const selectionData = this.plugin.getSelectedText();
+								if (selectionData && selectionData.selectedText) {
+									if (!checking) this.plugin.explainSelectedText(selectionData.editor);
+									return true;
+								}
+								return false;
 							}
 						});
 					}
