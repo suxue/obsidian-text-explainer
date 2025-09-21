@@ -748,16 +748,22 @@ class ExplanationModal extends Modal {
                         );
 
                         const shouldGenerateAudio = Boolean(this.plugin.settings.ttsModel && this.plugin.settings.ttsModel.trim().length > 0);
+                        const selectedTextForAudio = (this.selectionData.selectedText || '').trim();
 
                         if (shouldGenerateAudio && audioContainer) {
-                                audioContainer.style.display = 'block';
-                                audioContainer.addClass('audio-loading');
-                                audioContainer.createEl('p', { text: 'Generating audio explanation...' });
+                                if (selectedTextForAudio.length > 0) {
+                                        audioContainer.style.display = 'block';
+                                        audioContainer.addClass('audio-loading');
+                                        audioContainer.createEl('p', { text: 'Generating audio for selected text...' });
+                                } else {
+                                        audioContainer.empty();
+                                        audioContainer.style.display = 'none';
+                                }
                         }
 
-                        if (shouldGenerateAudio) {
-                                const ttsSystemPrompt = `${systemPrompt}\nSpeak the explanation naturally without using HTML or Markdown formatting.`;
-                                const ttsPrompt = `${prompt}\n\nRespond using clear sentences suitable for audio playback without HTML or Markdown.`;
+                        if (shouldGenerateAudio && selectedTextForAudio.length > 0) {
+                                const ttsSystemPrompt = 'Convert the user\'s message into spoken audio and respond with a direct MP3 URL.';
+                                const ttsPrompt = selectedTextForAudio;
 
                                 this.audioPromise = (async () => {
                                         try {
