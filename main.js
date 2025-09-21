@@ -21,16 +21,21 @@ class TextExplainerPlugin extends Plugin {
 			this.explainSelectedText();
 		});
 
-		// Add command
+		// Add command (works in edit and reader mode)
 		this.addCommand({
 			id: 'explain-selected-text',
 			name: 'Explain selected text',
-			editorCallback: (editor) => {
-				this.explainSelectedText(editor);
+			checkCallback: (checking) => {
+				const selectionData = this.getSelectedText();
+				if (selectionData && selectionData.selectedText) {
+					if (!checking) this.explainSelectedText(selectionData.editor);
+					return true;
+				}
+				return false;
 			}
 		});
 
-		// Register hotkey
+		// Register hotkey (works in edit and reader mode)
 		this.addCommand({
 			id: 'explain-text-hotkey',
 			name: 'Explain text (hotkey)',
@@ -38,8 +43,13 @@ class TextExplainerPlugin extends Plugin {
 				modifiers: this.settings.hotkeyModifiers,
 				key: this.settings.hotkeyKey
 			}],
-			editorCallback: (editor) => {
-				this.explainSelectedText(editor);
+			checkCallback: (checking) => {
+				const selectionData = this.getSelectedText();
+				if (selectionData && selectionData.selectedText) {
+					if (!checking) this.explainSelectedText(selectionData.editor);
+					return true;
+				}
+				return false;
 			}
 		});
 
@@ -336,12 +346,9 @@ class ExplanationModal extends Modal {
 		const actionsDiv = contentEl.createDiv('explanation-actions');
 		actionsDiv.style.display = 'none';
 		
-		// Create Note & Link button (conditional text based on editor availability)
-		const hasEditor = this.selectionData.editor !== null && this.selectionData.editor !== undefined;
-		const buttonText = hasEditor ? 'Create Note & Link' : 'Create Note';
-		
+		// Create Note & Link button
 		const createNoteBtn = actionsDiv.createEl('button', {
-			text: buttonText,
+			text: 'Create Note & Link',
 			cls: 'mod-cta'
 		});
 		createNoteBtn.addEventListener('click', () => this.createNoteAndLink());
@@ -487,48 +494,115 @@ ${cleanExplanation}
 		}
 	}
 
+	getLinkTextFromNotePath(notePath) {
+		const fileName = notePath.split('/').pop().replace('.md', '');
+		return `[[${fileName}]]`;
+	}
+
 	replaceSelectionWithLink(notePath) {
-		if (!this.selectionData.editor) {
+		const editor = this.selectionData.editor;
+		if (!editor) {
 			console.warn('Editor not available - skipping text replacement');
-			return;
+			return false;
 		}
+
+		const linkText = this.getLinkTextFromNotePath(notePath);
 		
 		try {
-			// Extract just the filename without path and extension for the link text
-			const fileName = notePath.split('/').pop().replace('.md', '');
-			const linkText = `[[${fileName}]]`;
-			
-			// Get current selection to ensure it's still valid
-			const selection = this.selectionData.editor.getSelection();
-			
+			const selection = editor.getSelection();
 			if (selection && selection === this.selectionData.selectedText) {
-				// Selection is still valid, replace it
-				this.selectionData.editor.replaceSelection(linkText);
-			} else {
-				// Selection has changed or is invalid, try to find and replace the original text
-				const cursor = this.selectionData.editor.getCursor();
-				const currentLine = this.selectionData.editor.getLine(cursor.line);
-				
-				// Look for the original selected text in the current line
-				const textIndex = currentLine.indexOf(this.selectionData.selectedText);
-				if (textIndex !== -1) {
-					// Found the text, replace it at that position
-					const lineNumber = cursor.line;
-					const from = { line: lineNumber, ch: textIndex };
-					const to = { line: lineNumber, ch: textIndex + this.selectionData.selectedText.length };
-					
-					this.selectionData.editor.replaceRange(linkText, from, to);
-				} else {
-					// As a fallback, just insert the link at the current cursor position
-					this.selectionData.editor.replaceSelection(linkText);
-				}
+				editor.replaceSelection(linkText);
+				return true;
 			}
+
+			const cursor = editor.getCursor();
+			const currentLine = editor.getLine(cursor.line);
+			const textIndex = currentLine.indexOf(this.selectionData.selectedText);
+			if (textIndex !== -1) {
+				const lineNumber = cursor.line;
+				const from = { line: lineNumber, ch: textIndex };
+				const to = { line: lineNumber, ch: textIndex + this.selectionData.selectedText.length };
+				editor.replaceRange(linkText, from, to);
+				return true;
+			}
+
+			editor.replaceSelection(linkText);
+			return true;
 		} catch (error) {
 			console.error('Error replacing selection with link:', error);
-			// Fallback: just insert the link at cursor position
-			const fileName = notePath.split('/').pop().replace('.md', '');
-			const linkText = `[[${fileName}]]`;
-			this.selectionData.editor.replaceSelection(linkText);
+			editor.replaceSelection(linkText);
+			return true;
+		}
+	}
+
+	findSelectionIndexInContent(content, selectedText, textBefore, textAfter, paragraphText) {
+		if (!selectedText) {
+			return -1;
+		}
+
+		const matchesContext = (candidateIndex) => {
+			const beforeSlice = content.substring(Math.max(0, candidateIndex - (textBefore ? textBefore.length : 0)), candidateIndex).trim();
+			const afterSlice = content.substring(candidateIndex + selectedText.length, Math.min(content.length, candidateIndex + selectedText.length + (textAfter ? textAfter.length : 0))).trim();
+			const beforeMatch = !textBefore || beforeSlice.endsWith(textBefore);
+			const afterMatch = !textAfter || afterSlice.startsWith(textAfter);
+			return beforeMatch && afterMatch;
+		};
+
+		let candidateIndex = content.indexOf(selectedText);
+		if (candidateIndex === -1) {
+			return -1;
+		}
+
+		let index = candidateIndex;
+		while (index !== -1) {
+			if (matchesContext(index)) {
+				return index;
+			}
+			index = content.indexOf(selectedText, index + 1);
+		}
+
+		if (paragraphText) {
+			const paragraphIndex = content.indexOf(paragraphText);
+			if (paragraphIndex !== -1) {
+				const innerIndex = paragraphText.indexOf(selectedText);
+				if (innerIndex !== -1) {
+					return paragraphIndex + innerIndex;
+				}
+			}
+		}
+
+		return candidateIndex;
+	}
+
+	async insertLinkIntoActiveFile(notePath) {
+		try {
+			const activeFile = this.plugin.app.workspace.getActiveFile();
+			if (!activeFile) {
+				console.warn('Active file not found - skipping link insertion');
+				return false;
+			}
+
+			const content = await this.plugin.app.vault.read(activeFile);
+			const index = this.findSelectionIndexInContent(
+				content,
+				this.selectionData.selectedText,
+				this.selectionData.textBefore,
+				this.selectionData.textAfter,
+				this.selectionData.paragraphText
+			);
+
+			if (index === -1) {
+				console.warn('Selected text not found in active file - skipping link insertion');
+				return false;
+			}
+
+			const linkText = this.getLinkTextFromNotePath(notePath);
+			const updatedContent = `${content.slice(0, index)}${linkText}${content.slice(index + this.selectionData.selectedText.length)}`;
+			await this.plugin.app.vault.modify(activeFile, updatedContent);
+			return true;
+		} catch (error) {
+			console.error('Error inserting link into active file:', error);
+			return false;
 		}
 	}
 
@@ -536,21 +610,19 @@ ${cleanExplanation}
 		try {
 			// Show loading state on button
 			const button = this.contentEl.querySelector('button');
-			const hasEditor = this.selectionData.editor !== null && this.selectionData.editor !== undefined;
-			const originalText = hasEditor ? 'Create Note & Link' : 'Create Note';
 			button.textContent = 'Creating Note...';
 			button.disabled = true;
 			
 			// Create the note
 			const notePath = await this.createNoteFromExplanation();
 			
-			// Replace selection with link only if editor is available (edit mode)
-			if (hasEditor) {
-				this.replaceSelectionWithLink(notePath);
-			}
-			
-			// Show success message
-			const message = hasEditor ? `Note created and linked: ${notePath}` : `Note created: ${notePath}`;
+			const linkInserted = this.selectionData.editor
+				? this.replaceSelectionWithLink(notePath)
+				: await this.insertLinkIntoActiveFile(notePath);
+
+			const message = linkInserted
+				? `Note created and linked: ${notePath}`
+				: `Note created (link not inserted automatically): ${notePath}`;
 			new Notice(message);
 			
 			// Close the modal
@@ -563,9 +635,7 @@ ${cleanExplanation}
 			// Reset button state
 			const button = this.contentEl.querySelector('button');
 			if (button) {
-				const hasEditor = this.selectionData.editor !== null && this.selectionData.editor !== undefined;
-				const originalText = hasEditor ? 'Create Note & Link' : 'Create Note';
-				button.textContent = originalText;
+				button.textContent = 'Create Note & Link';
 				button.disabled = false;
 			}
 		}
@@ -684,8 +754,13 @@ class TextExplainerSettingTab extends PluginSettingTab {
 							modifiers: this.plugin.settings.hotkeyModifiers,
 							key: this.plugin.settings.hotkeyKey
 						}],
-						editorCallback: (editor) => {
-							this.plugin.explainSelectedText(editor);
+						checkCallback: (checking) => {
+							const selectionData = this.plugin.getSelectedText();
+							if (selectionData && selectionData.selectedText) {
+								if (!checking) this.plugin.explainSelectedText(selectionData.editor);
+								return true;
+							}
+							return false;
 						}
 					});
 				});
@@ -711,8 +786,13 @@ class TextExplainerSettingTab extends PluginSettingTab {
 								modifiers: this.plugin.settings.hotkeyModifiers,
 								key: this.plugin.settings.hotkeyKey
 							}],
-							editorCallback: (editor) => {
-								this.plugin.explainSelectedText(editor);
+							checkCallback: (checking) => {
+								const selectionData = this.plugin.getSelectedText();
+								if (selectionData && selectionData.selectedText) {
+									if (!checking) this.plugin.explainSelectedText(selectionData.editor);
+									return true;
+								}
+								return false;
 							}
 						});
 					}
