@@ -152,6 +152,9 @@ Access via Settings → Text Explainer:
 - **Note Directory**: Folder for created explanation notes (default: `Explanations`)
 - **Default properties & template**: Use the embedded editor to define front matter and Markdown defaults that every generated note will start from before you make per-note tweaks.
 
+#### Prompt Template
+- **Default prompt template**: Customize the instruction block that is sent to the language model when explaining short selections. You can reference placeholders such as `{{selectedText}}`, `{{language}}`, `{{paragraphText}}`, `{{textBefore}}`, `{{textAfter}}`, `{{contextSection}}`, `{{sampleSentenceLanguage}}`, `{{pronunciationHint}}`, and `{{noPinyinInstruction}}` to inject contextual details automatically.
+
 ### Note Configuration Modal
 
 Before saving a note you can tailor both the front matter and body directly from the explanation popup:
