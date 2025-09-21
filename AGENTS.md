@@ -1,0 +1,7 @@
+- The project is an Obsidian plugin (`main.js`) that explains selected text and can create linked explanation notes.
+- Commands `explain-selected-text` and `explain-text-hotkey` use `checkCallback` so the modal works in both edit and reader modes.
+- `getSelectedText` prefers the active editor selection but falls back to DOM selections, returning context plus the editor instance when available.
+- The explanation modal saves notes under the configured `noteDirectory` after sanitizing the selected text to build filenames.
+- In edit mode `replaceSelectionWithLink` attempts to swap the original selection with the new note link (`[[NoteName]]`) and falls back to inserting at the cursor.
+- Regression to fix: reader-mode note creation currently skips inserting a link to the new explanation note, but the feature must add that link without breaking existing behaviors.
+- Development environment guidelines: default to ASCII, use `rg` for searches, avoid reverting unowned changes, and run shell commands via `bash -lc` with explicit `workdir`.
