@@ -762,8 +762,8 @@ class ExplanationModal extends Modal {
                         }
 
                         if (shouldGenerateAudio && selectedTextForAudio.length > 0) {
-                                const ttsSystemPrompt = 'Convert the user\'s message into spoken audio and respond with a direct MP3 URL.';
-                                const ttsPrompt = selectedTextForAudio;
+                                const ttsSystemPrompt = '';
+                                const ttsPrompt = selectedTextForAudio + " ";
 
                                 this.audioPromise = (async () => {
                                         try {
