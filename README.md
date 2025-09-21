@@ -129,7 +129,7 @@ ollama pull llama2  # or preferred model
 1. **Select any text** in your Obsidian note
 2. **Press `Alt+D`** (or your configured hotkey)
 3. **View explanation** in the modal popup
-4. **Customize the generated note** by editing predefined properties or the body template (placeholders like `{{content}}` are supported)
+4. **Customize the generated note** by editing predefined properties or the body template (placeholders like `{{content}}` are supported). Default values can be set from the plugin settings panel.
 5. **Create a linked note** with the "Create Note & Link" button
 
 ## Configuration
@@ -150,6 +150,7 @@ Access via Settings → Text Explainer:
 
 #### Note Settings
 - **Note Directory**: Folder for created explanation notes (default: `Explanations`)
+- **Default properties & template**: Use the embedded editor to define front matter and Markdown defaults that every generated note will start from before you make per-note tweaks.
 
 ### Note Configuration Modal
 
@@ -159,6 +160,7 @@ Before saving a note you can tailor both the front matter and body directly from
 - **Body template editor**: Configure the Markdown that wraps the generated explanation. Include `{{content}}` where the plain-text explanation should appear or `{{contentHtml}}` to keep HTML formatting.
 - **Available placeholders**: `{{selectedText}}`, `{{paragraphText}}`, `{{textBefore}}`, `{{textAfter}}`, `{{date}}`, `{{content}}`, `{{contentHtml}}`.
 
+Manage the defaults from Settings → Text Explainer and then fine-tune them per note in the popup.
 The plugin remembers your last-used configuration, making it easy to reuse templates across sessions.
 
 ### Supported Languages

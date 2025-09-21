@@ -954,14 +954,32 @@ class TextExplainerSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	display() {
-		const { containerEl } = this;
-		containerEl.empty();
+        display() {
+                const { containerEl } = this;
+                containerEl.empty();
+                containerEl.addClass('text-explainer-settings');
 
-		containerEl.createEl('h2', { text: 'Text Explainer Settings' });
+                const storedProperties = Array.isArray(this.plugin.settings.noteProperties)
+                        ? this.plugin.settings.noteProperties
+                        : [];
 
-		// API Key setting
-		new Setting(containerEl)
+                this.noteProperties = (storedProperties.length > 0 ? storedProperties : DEFAULT_NOTE_PROPERTIES)
+                        .map((prop) => ({
+                                key: (prop && typeof prop.key === 'string') ? prop.key : '',
+                                value: (prop && typeof prop.value === 'string') ? prop.value : ''
+                        }));
+
+                this.noteBodyTemplate = (typeof this.plugin.settings.noteBodyTemplate === 'string'
+                        && this.plugin.settings.noteBodyTemplate.trim().length > 0)
+                        ? this.plugin.settings.noteBodyTemplate
+                        : DEFAULT_NOTE_BODY_TEMPLATE;
+
+                this.noteSettingsContainer = null;
+
+                containerEl.createEl('h2', { text: 'Text Explainer Settings' });
+
+                // API Key setting
+                new Setting(containerEl)
 			.setName('API Key')
 			.setDesc('Your OpenAI API key or OpenAI-compatible API key')
 			.addText(text => text
@@ -1014,19 +1032,28 @@ class TextExplainerSettingTab extends PluginSettingTab {
 				}));
 
 		// Note directory setting
-		new Setting(containerEl)
-			.setName('Note Directory')
-			.setDesc('Directory where explanation notes will be created (relative to vault root)')
-			.addText(text => text
-				.setPlaceholder('Explanations')
-				.setValue(this.plugin.settings.noteDirectory)
-				.onChange(async (value) => {
-					this.plugin.settings.noteDirectory = value;
-					await this.plugin.saveSettings();
-				}));
+                new Setting(containerEl)
+                        .setName('Note Directory')
+                        .setDesc('Directory where explanation notes will be created (relative to vault root)')
+                        .addText(text => text
+                                .setPlaceholder('Explanations')
+                                .setValue(this.plugin.settings.noteDirectory)
+                                .onChange(async (value) => {
+                                        this.plugin.settings.noteDirectory = value;
+                                        await this.plugin.saveSettings();
+                                }));
 
-		// Hotkey settings section
-		containerEl.createEl('h3', { text: 'Hotkey Settings' });
+                containerEl.createEl('h3', { text: 'Default Note Configuration' });
+                containerEl.createEl('p', {
+                        text: 'Preconfigure the YAML properties and body template that new explanation notes start with. You can still tweak them in the popup before saving.'
+                });
+
+                this.noteSettingsContainer = containerEl.createDiv('note-configuration');
+                this.noteSettingsContainer.addClass('note-settings-configuration');
+                this.renderNoteConfigurationSettings();
+
+                // Hotkey settings section
+                containerEl.createEl('h3', { text: 'Hotkey Settings' });
 
 		// Hotkey modifiers
 		new Setting(containerEl)
@@ -1073,31 +1100,178 @@ class TextExplainerSettingTab extends PluginSettingTab {
 			.addText(text => text
 				.setPlaceholder('d')
 				.setValue(this.plugin.settings.hotkeyKey)
-				.onChange(async (value) => {
-					if (value.length === 1) {
-						this.plugin.settings.hotkeyKey = value.toLowerCase();
-						await this.plugin.saveSettings();
-						// Re-register the hotkey command
-						this.plugin.app.commands.removeCommand('text-explainer:explain-text-hotkey');
-						this.plugin.addCommand({
-							id: 'explain-text-hotkey',
-							name: 'Explain text (hotkey)',
-							hotkeys: [{
-								modifiers: this.plugin.settings.hotkeyModifiers,
-								key: this.plugin.settings.hotkeyKey
-							}],
-							checkCallback: (checking) => {
-								const selectionData = this.plugin.getSelectedText();
-								if (selectionData && selectionData.selectedText) {
-									if (!checking) this.plugin.explainSelectedText(selectionData.editor);
-									return true;
-								}
-								return false;
-							}
-						});
-					}
-				}));
-	}
+                                .onChange(async (value) => {
+                                        if (value.length === 1) {
+                                                this.plugin.settings.hotkeyKey = value.toLowerCase();
+                                                await this.plugin.saveSettings();
+                                                // Re-register the hotkey command
+                                                this.plugin.app.commands.removeCommand('text-explainer:explain-text-hotkey');
+                                                this.plugin.addCommand({
+                                                        id: 'explain-text-hotkey',
+                                                        name: 'Explain text (hotkey)',
+                                                        hotkeys: [{
+                                                                modifiers: this.plugin.settings.hotkeyModifiers,
+                                                                key: this.plugin.settings.hotkeyKey
+                                                        }],
+                                                        checkCallback: (checking) => {
+                                                                const selectionData = this.plugin.getSelectedText();
+                                                                if (selectionData && selectionData.selectedText) {
+                                                                        if (!checking) this.plugin.explainSelectedText(selectionData.editor);
+                                                                        return true;
+                                                                }
+                                                                return false;
+                                                        }
+                                                });
+                                        }
+                                }));
+        }
+
+        renderNoteConfigurationSettings() {
+                if (!this.noteSettingsContainer) {
+                        return;
+                }
+
+                this.noteSettingsContainer.empty();
+
+                if (!Array.isArray(this.noteProperties)) {
+                        this.noteProperties = [];
+                }
+
+                if (this.noteProperties.length === 0) {
+                        this.noteProperties.push({ key: '', value: '' });
+                }
+
+                this.noteSettingsContainer.createEl('h4', { text: 'Predefined properties' });
+
+                const placeholderInfo = this.noteSettingsContainer.createDiv('placeholder-info');
+                placeholderInfo.createSpan({ text: 'Available placeholders:' });
+                const placeholderList = placeholderInfo.createEl('ul');
+                NOTE_PLACEHOLDERS.forEach((placeholder) => {
+                        const listItem = placeholderList.createEl('li');
+                        listItem.createEl('code', { text: placeholder.token });
+                        listItem.createSpan({ text: ` - ${placeholder.description}` });
+                });
+
+                const propertiesTable = this.noteSettingsContainer.createEl('table', { cls: 'note-config-table' });
+                const tableHead = propertiesTable.createEl('thead');
+                const headRow = tableHead.createEl('tr');
+                headRow.createEl('th', { text: 'Property' });
+                headRow.createEl('th', { text: 'Value or placeholder' });
+                headRow.createEl('th', { text: '' });
+
+                const tableBody = propertiesTable.createEl('tbody');
+
+                this.noteProperties.forEach((property, index) => {
+                        const row = tableBody.createEl('tr');
+
+                        const keyCell = row.createEl('td');
+                        const keyInput = keyCell.createEl('input', {
+                                attr: {
+                                        type: 'text',
+                                        value: property.key || '',
+                                        placeholder: 'Property key'
+                                }
+                        });
+                        keyInput.addEventListener('input', () => {
+                                this.noteProperties[index].key = keyInput.value;
+                                this.persistNoteConfigurationSettings();
+                        });
+
+                        const valueCell = row.createEl('td');
+                        const valueWrapper = valueCell.createDiv('value-input-wrapper');
+                        const valueInput = valueWrapper.createEl('input', {
+                                attr: {
+                                        type: 'text',
+                                        value: property.value || '',
+                                        placeholder: 'Value or choose a placeholder'
+                                }
+                        });
+                        valueInput.addEventListener('input', () => {
+                                this.noteProperties[index].value = valueInput.value;
+                                this.persistNoteConfigurationSettings();
+                        });
+
+                        const placeholderSelect = valueWrapper.createEl('select', { cls: 'placeholder-select' });
+                        placeholderSelect.createEl('option', { value: '', text: 'Insert placeholder...' });
+                        NOTE_PLACEHOLDERS.forEach((placeholder) => {
+                                const option = placeholderSelect.createEl('option', {
+                                        value: placeholder.token,
+                                        text: placeholder.token
+                                });
+                                option.setAttr('data-description', placeholder.description);
+                                option.setAttr('title', placeholder.description);
+                        });
+                        placeholderSelect.addEventListener('change', (event) => {
+                                const selectValue = event.target.value;
+                                if (selectValue) {
+                                        valueInput.value = selectValue;
+                                        this.noteProperties[index].value = selectValue;
+                                        this.persistNoteConfigurationSettings();
+                                        event.target.value = '';
+                                }
+                        });
+
+                        const removeCell = row.createEl('td', { cls: 'note-config-actions' });
+                        const removeButton = removeCell.createEl('button', {
+                                text: 'Remove',
+                                cls: 'note-config-remove'
+                        });
+                        removeButton.addEventListener('click', (event) => {
+                                event.preventDefault();
+                                this.noteProperties.splice(index, 1);
+                                this.renderNoteConfigurationSettings();
+                                this.persistNoteConfigurationSettings();
+                        });
+                });
+
+                const addRowButton = this.noteSettingsContainer.createEl('button', {
+                        text: 'Add property',
+                        cls: 'note-config-add-row'
+                });
+                addRowButton.addEventListener('click', (event) => {
+                        event.preventDefault();
+                        this.noteProperties.push({ key: '', value: '' });
+                        this.renderNoteConfigurationSettings();
+                });
+
+                const templateSection = this.noteSettingsContainer.createDiv('note-template-section');
+                const templateLabel = templateSection.createEl('label', {
+                        attr: { for: 'default-note-template-input' },
+                        text: 'Note body template'
+                });
+                templateLabel.createSpan({ text: ' (include {{content}} where the explanation should appear)' });
+                const templateTextarea = templateSection.createEl('textarea', {
+                        cls: 'note-template-input',
+                        attr: { id: 'default-note-template-input' }
+                });
+                templateTextarea.value = this.noteBodyTemplate || '';
+                templateTextarea.addEventListener('input', () => {
+                        this.noteBodyTemplate = templateTextarea.value;
+                        this.persistNoteConfigurationSettings();
+                });
+        }
+
+        async persistNoteConfigurationSettings() {
+                if (!this.plugin || !this.plugin.settings) {
+                        return;
+                }
+
+                const normalizedProperties = Array.isArray(this.noteProperties)
+                        ? this.noteProperties
+                                .map((property) => ({
+                                        key: typeof property.key === 'string' ? property.key.trim() : '',
+                                        value: typeof property.value === 'string' ? property.value : ''
+                                }))
+                                .filter((property) => property.key.length > 0 || property.value.length > 0)
+                        : [];
+
+                this.plugin.settings.noteProperties = normalizedProperties.map((property) => ({ ...property }));
+                this.plugin.settings.noteBodyTemplate = typeof this.noteBodyTemplate === 'string'
+                        ? this.noteBodyTemplate
+                        : '';
+
+                await this.plugin.saveSettings();
+        }
 }
 
 module.exports = TextExplainerPlugin;
