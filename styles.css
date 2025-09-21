@@ -185,6 +185,23 @@
     font-size: 0.85em;
 }
 
+.text-explainer-settings .prompt-template-settings {
+    margin-top: 16px;
+}
+
+.text-explainer-settings .prompt-template-control {
+    width: 100%;
+}
+
+.text-explainer-settings .prompt-template-control textarea {
+    width: 100%;
+    min-height: 200px;
+    font-family: var(--font-monospace);
+    font-size: 0.95em;
+    line-height: 1.4;
+    resize: vertical;
+}
+
 .text-explainer-modal .note-config-table,
 .text-explainer-settings .note-config-table {
     width: 100%;

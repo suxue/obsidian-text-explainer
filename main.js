@@ -29,6 +29,44 @@ const NOTE_PLACEHOLDERS = [
         { token: '{{contentHtml}}', description: 'Generated explanation with HTML formatting' }
 ];
 
+const PROMPT_PLACEHOLDERS = [
+        { token: '{{selectedText}}', description: 'Original selected text' },
+        { token: '{{language}}', description: 'Configured response language' },
+        { token: '{{paragraphText}}', description: 'Paragraph containing the selection' },
+        { token: '{{textBefore}}', description: 'Text that appears before the selection' },
+        { token: '{{textAfter}}', description: 'Text that appears after the selection' },
+        { token: '{{contextSection}}', description: 'Formatted context block combining surrounding text' },
+        { token: '{{sampleSentenceLanguage}}', description: 'Language to use for sample sentences' },
+        { token: '{{pronunciationHint}}', description: 'Optional IPA hint when the response language is Chinese' },
+        { token: '{{noPinyinInstruction}}', description: 'Instruction to avoid Pinyin when the response language is Chinese' }
+];
+
+const DEFAULT_PROMPT_TEMPLATE = `Provide an explanation for the word: "{{selectedText}}{{pronunciationHint}}" in {{language}} without commentary.{{noPinyinInstruction}}
+
+Use the context from the surrounding paragraph to inform your explanation when relevant:
+
+{{contextSection}}
+
+# Consider these scenarios:
+
+## Names
+If "{{selectedText}}" is a person's name, company name, or organization name, provide a brief description (e.g., who they are or what they do).
+
+## Technical Terms
+If "{{selectedText}}" is a technical term or jargon
+- give a concise definition and explain.
+- Some best practice of using it
+- Explain how it works.
+- No need example sentence for the technical term.
+
+## Normal Words
+- For any other word, explain its meaning and provide 1-2 example sentences with the word in {{sampleSentenceLanguage}}.
+
+# Format
+- Output the words first, then the explanation, and then the example sentences if necessary.
+- No extra explanation
+- Remember to using proper html format like <p> <b> <i> <a> <li> <ol> <ul> to improve readability.`;
+
 // Default settings
 const DEFAULT_SETTINGS = {
         model: "gpt-3.5-turbo",
@@ -39,7 +77,8 @@ const DEFAULT_SETTINGS = {
         hotkeyKey: "d",
         noteDirectory: "Explanations",
         noteProperties: DEFAULT_NOTE_PROPERTIES.map(prop => ({ ...prop })),
-        noteBodyTemplate: DEFAULT_NOTE_BODY_TEMPLATE
+        noteBodyTemplate: DEFAULT_NOTE_BODY_TEMPLATE,
+        promptTemplate: DEFAULT_PROMPT_TEMPLATE
 };
 
 // Main plugin class
@@ -109,6 +148,10 @@ class TextExplainerPlugin extends Plugin {
 
                 if (!this.settings.noteBodyTemplate || typeof this.settings.noteBodyTemplate !== 'string') {
                         this.settings.noteBodyTemplate = DEFAULT_NOTE_BODY_TEMPLATE;
+                }
+
+                if (!this.settings.promptTemplate || typeof this.settings.promptTemplate !== 'string') {
+                        this.settings.promptTemplate = DEFAULT_PROMPT_TEMPLATE;
                 }
         }
 
@@ -252,16 +295,16 @@ ${selectedText}
 			};
 		}
 
-		const pinYinExtraPrompt = this.settings.language === "Chinese" ? ' DO NOT add Pinyin for it.' : '';
-		const ipaExtraPrompt = this.settings.language === "Chinese" ? '(with IPA if necessary)' : '';
-		const asciiChars = selectedText.replace(/[\s\.,\-_'\"!?()]/g, '')
-			.split('')
-			.filter(char => char.charCodeAt(0) <= 127).length;
-		const sampleSentenceLanguage = selectedText.length === asciiChars ? "English" : this.settings.language;
+                const pinYinExtraPrompt = this.settings.language === "Chinese" ? ' DO NOT add Pinyin for it.' : '';
+                const ipaExtraPrompt = this.settings.language === "Chinese" ? '(with IPA if necessary)' : '';
+                const asciiChars = selectedText.replace(/[\s\.,\-_'\"!?()]/g, '')
+                        .split('')
+                        .filter(char => char.charCodeAt(0) <= 127).length;
+                const sampleSentenceLanguage = selectedText.length === asciiChars ? "English" : this.settings.language;
 
-		// Context prompt
-		const contextPrompt = textBefore || textAfter ?
-			`# Context:
+                // Context prompt
+                const contextPrompt = textBefore || textAfter ?
+                        `# Context:
 ## Before selected text:
 ${textBefore || 'None'}
 ## Selected text:
@@ -269,37 +312,43 @@ ${selectedText}
 ## After selected text:
 ${textAfter || 'None'}` : paragraphText;
 
-		// Explain words prompt
-		return {
-			prompt: `Provide an explanation for the word: "${selectedText}${ipaExtraPrompt}" in ${this.settings.language} without commentary.${pinYinExtraPrompt}
+                const promptTemplate = (typeof this.settings.promptTemplate === 'string'
+                        && this.settings.promptTemplate.trim().length > 0)
+                        ? this.settings.promptTemplate
+                        : DEFAULT_PROMPT_TEMPLATE;
 
-Use the context from the surrounding paragraph to inform your explanation when relevant:
+                const replaceTokens = (template, values) => {
+                        if (typeof template !== 'string' || template.length === 0) {
+                                return '';
+                        }
 
-${contextPrompt}
+                        let result = template;
+                        Object.entries(values).forEach(([token, value]) => {
+                                const safeValue = value != null ? String(value) : '';
+                                result = result.split(token).join(safeValue);
+                        });
+                        return result;
+                };
 
-# Consider these scenarios:
+                const promptValues = {
+                        '{{selectedText}}': selectedText,
+                        '{{language}}': this.settings.language || '',
+                        '{{paragraphText}}': paragraphText || '',
+                        '{{textBefore}}': textBefore || '',
+                        '{{textAfter}}': textAfter || '',
+                        '{{contextSection}}': contextPrompt || '',
+                        '{{contextPrompt}}': contextPrompt || '',
+                        '{{sampleSentenceLanguage}}': sampleSentenceLanguage || '',
+                        '{{pronunciationHint}}': ipaExtraPrompt,
+                        '{{noPinyinInstruction}}': pinYinExtraPrompt
+                };
 
-## Names
-If "${selectedText}" is a person's name, company name, or organization name, provide a brief description (e.g., who they are or what they do).
-
-## Technical Terms
-If "${selectedText}" is a technical term or jargon
-- give a concise definition and explain.
-- Some best practice of using it
-- Explain how it works. 
-- No need example sentence for the technical term.
-
-## Normal Words
-- For any other word, explain its meaning and provide 1-2 example sentences with the word in ${sampleSentenceLanguage}.
-
-# Format
-- Output the words first, then the explanation, and then the example sentences if necessary.
-- No extra explanation
-- Remember to using proper html format like <p> <b> <i> <a> <li> <ol> <ul> to improve readability.
-`,
-			systemPrompt
-		};
-	}
+                // Explain words prompt
+                return {
+                        prompt: replaceTokens(promptTemplate, promptValues),
+                        systemPrompt
+                };
+        }
 
 	// Call LLM API
 	async callLLM(prompt, systemPrompt, progressCallback) {
@@ -1109,7 +1158,7 @@ class TextExplainerSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				}));
 
-		// Note directory setting
+                // Note directory setting
                 new Setting(containerEl)
                         .setName('Note Directory')
                         .setDesc('Directory where explanation notes will be created (relative to vault root)')
@@ -1120,6 +1169,40 @@ class TextExplainerSettingTab extends PluginSettingTab {
                                         this.plugin.settings.noteDirectory = value;
                                         await this.plugin.saveSettings();
                                 }));
+
+                containerEl.createEl('h3', { text: 'Prompt Template' });
+                const promptSettingsContainer = containerEl.createDiv('prompt-template-settings');
+                promptSettingsContainer.createEl('p', {
+                        text: 'Customize the base prompt that is sent to the language model when explaining short selections. '
+                                + 'Placeholders are replaced before the request is sent.'
+                });
+
+                const promptPlaceholderInfo = promptSettingsContainer.createDiv('placeholder-info');
+                promptPlaceholderInfo.createSpan({ text: 'Available placeholders:' });
+                const promptPlaceholderList = promptPlaceholderInfo.createEl('ul');
+                PROMPT_PLACEHOLDERS.forEach((placeholder) => {
+                        const listItem = promptPlaceholderList.createEl('li');
+                        listItem.createEl('code', { text: placeholder.token });
+                        listItem.createSpan({ text: ` - ${placeholder.description}` });
+                });
+
+                const promptTemplateSetting = new Setting(promptSettingsContainer)
+                        .setName('Default prompt template')
+                        .setDesc('Used when generating explanations for individual words or short phrases.');
+
+                promptTemplateSetting.controlEl.addClass('prompt-template-control');
+                const promptTextarea = promptTemplateSetting.controlEl.createEl('textarea', {
+                        cls: 'prompt-template-input',
+                        attr: { rows: 12 }
+                });
+                promptTextarea.value = (typeof this.plugin.settings.promptTemplate === 'string'
+                        && this.plugin.settings.promptTemplate.length > 0)
+                        ? this.plugin.settings.promptTemplate
+                        : DEFAULT_PROMPT_TEMPLATE;
+                promptTextarea.addEventListener('input', async () => {
+                        this.plugin.settings.promptTemplate = promptTextarea.value;
+                        await this.plugin.saveSettings();
+                });
 
                 containerEl.createEl('h3', { text: 'Default Note Configuration' });
                 containerEl.createEl('p', {
