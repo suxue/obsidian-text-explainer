@@ -143,6 +143,158 @@
     cursor: not-allowed;
 }
 
+.text-explainer-modal .note-configuration,
+.text-explainer-settings .note-configuration {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.text-explainer-modal .note-configuration h4,
+.text-explainer-settings .note-configuration h4 {
+    margin: 0 0 10px;
+    font-size: 1.05em;
+    color: var(--text-normal);
+}
+
+.text-explainer-modal .placeholder-info,
+.text-explainer-settings .placeholder-info {
+    font-size: 0.9em;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+}
+
+.text-explainer-modal .placeholder-info ul,
+.text-explainer-settings .placeholder-info ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+}
+
+.text-explainer-modal .placeholder-info li,
+.text-explainer-settings .placeholder-info li {
+    margin-bottom: 4px;
+    list-style: disc;
+}
+
+.text-explainer-modal .placeholder-info code,
+.text-explainer-settings .placeholder-info code {
+    background: var(--background-secondary);
+    border-radius: 4px;
+    padding: 2px 6px;
+    margin-right: 6px;
+    font-size: 0.85em;
+}
+
+.text-explainer-modal .note-config-table,
+.text-explainer-settings .note-config-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 10px;
+}
+
+.text-explainer-modal .note-config-table th,
+.text-explainer-modal .note-config-table td,
+.text-explainer-settings .note-config-table th,
+.text-explainer-settings .note-config-table td {
+    border-bottom: 1px solid var(--background-modifier-border);
+    padding: 6px;
+    vertical-align: middle;
+}
+
+.text-explainer-modal .note-config-table th,
+.text-explainer-settings .note-config-table th {
+    text-align: left;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.9em;
+}
+
+.text-explainer-modal .note-config-table input,
+.text-explainer-settings .note-config-table input {
+    width: 100%;
+    padding: 6px;
+    border-radius: 4px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    color: var(--text-normal);
+}
+
+.text-explainer-modal .value-input-wrapper,
+.text-explainer-settings .value-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.text-explainer-modal .value-input-wrapper select,
+.text-explainer-settings .value-input-wrapper select {
+    flex: 0 0 170px;
+    padding: 6px;
+    border-radius: 4px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    color: var(--text-normal);
+}
+
+.text-explainer-modal .note-config-actions,
+.text-explainer-settings .note-config-actions {
+    text-align: right;
+}
+
+.text-explainer-modal .note-config-remove,
+.text-explainer-modal .note-config-add-row,
+.text-explainer-settings .note-config-remove,
+.text-explainer-settings .note-config-add-row {
+    background: none;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    padding: 4px 10px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.9em;
+}
+
+.text-explainer-modal .note-config-remove:hover,
+.text-explainer-modal .note-config-add-row:hover,
+.text-explainer-settings .note-config-remove:hover,
+.text-explainer-settings .note-config-add-row:hover {
+    color: var(--text-normal);
+    border-color: var(--interactive-accent);
+}
+
+.text-explainer-modal .note-config-add-row,
+.text-explainer-settings .note-config-add-row {
+    margin-top: 8px;
+}
+
+.text-explainer-modal .note-template-section,
+.text-explainer-settings .note-template-section {
+    margin-top: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.text-explainer-modal .note-template-section label,
+.text-explainer-settings .note-template-section label {
+    font-weight: 600;
+    color: var(--text-normal);
+}
+
+.text-explainer-modal .note-template-input,
+.text-explainer-settings .note-template-input {
+    min-height: 150px;
+    resize: vertical;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    color: var(--text-normal);
+    font-family: var(--font-monospace);
+    font-size: 0.95em;
+    line-height: 1.4;
+}
+
 /* Animation for modal */
 .text-explainer-modal.mod-animate {
     animation: slideInFromTop 0.3s ease;
@@ -175,6 +327,17 @@
     .text-explainer-modal .explanation-content p,
     .text-explainer-modal .explanation-content li {
         margin-bottom: 12px;
+    }
+
+    .text-explainer-modal .value-input-wrapper,
+    .text-explainer-settings .value-input-wrapper {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .text-explainer-modal .value-input-wrapper select,
+    .text-explainer-settings .value-input-wrapper select {
+        width: 100%;
     }
 }
 
